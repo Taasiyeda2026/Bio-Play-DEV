@@ -1879,6 +1879,16 @@
                 <select id="doors-count-select" class="count-select compact-select"></select>
               </div>
             </div>
+            <div class="field-group compact-fields-row">
+              <div class="compact-field" style="flex:1 1 100%">
+                <label for="participants-count-input">מספר משתתפים</label>
+                <input id="participants-count-input" type="number" min="1" step="1" class="room-select compact-select" placeholder="הזינו מספר משתתפים" />
+              </div>
+            </div>
+            <div class="field-group compact-fields-row" style="margin-top:6px">
+              <button class="btn btn-room" id="generate-assignments-btn" type="button">צור חלוקה לקבוצות</button>
+            </div>
+            <div id="group-assignments-summary" style="font-size:.83rem;color:#2a4059;line-height:1.5;margin-top:6px"></div>
 
             <div id="steps-toggles-container" style="display:none" aria-hidden="true">
               <input type="checkbox" class="step-cb" value="2" id="step-cb-2" checked />
@@ -2433,6 +2443,15 @@
   function getEnabledStepsKey(rid = currentRoomId) {
     return scoped("bioplay_enabled_steps", rid);
   }
+  function getParticipantsCountKey(rid = currentRoomId) {
+    return scoped("bioplay_participants_count", rid);
+  }
+  function getGroupSizesKey(rid = currentRoomId) {
+    return scoped("bioplay_group_sizes", rid);
+  }
+  function getGroupAssignmentsKey(rid = currentRoomId) {
+    return scoped("bioplay_group_assignments", rid);
+  }
 
   function getCreatedRoomNameKey(rid = currentRoomId) {
     return scoped("bioplay_last_created_room_name", rid);
@@ -2454,6 +2473,10 @@
   let mcqByOrganism = new Map();
   let globalStep5Data = null;
   let doorsCount = 5;
+  let participantsCount = 0;
+  let groupSizes = {};
+  let groupAssignments = [];
+  const HABITAT_ORDER = ["בית", "יער", "ים", "סוואנה", "מדבר"];
   const loginOverlay = document.getElementById("login-overlay");
   const loginCodeEl = document.getElementById("login-code");
   const loginMsg = document.getElementById("login-msg");
@@ -2466,6 +2489,9 @@
   const resetBtn = document.getElementById("reset-btn");
   const logoutBtn = document.getElementById("logout-btn");
   const doorsSelect = document.getElementById("doors-count-select");
+  const participantsCountInput = document.getElementById("participants-count-input");
+  const generateAssignmentsBtn = document.getElementById("generate-assignments-btn");
+  const groupAssignmentsSummary = document.getElementById("group-assignments-summary");
   const guideSearchInput = document.getElementById("guide-search-input");
   const guideSearchDropdown = document.getElementById("guide-search-dropdown");
   const guideModal = document.getElementById("guide-modal");
@@ -2615,6 +2641,57 @@
     applyEnabledSteps(raw);
   }
 
+  function computeBalancedGroupSizes(totalParticipants) {
+    const total = Math.max(0, Number(totalParticipants) || 0);
+    const base = Math.floor(total / HABITAT_ORDER.length);
+    const remainder = total % HABITAT_ORDER.length;
+    return HABITAT_ORDER.reduce((acc, habitat, i) => {
+      acc[habitat] = base + (i < remainder ? 1 : 0);
+      return acc;
+    }, {});
+  }
+
+  function renderAssignmentsSummary() {
+    if (!groupAssignmentsSummary) return;
+    const count = Number(participantsCount || 0);
+    if (!count || !Object.keys(groupSizes || {}).length) {
+      groupAssignmentsSummary.textContent = "טרם נוצרה חלוקה לקבוצות.";
+      return;
+    }
+    const sizeLine = HABITAT_ORDER.map((h) => `${h}: ${Number(groupSizes[h] || 0)}`).join(" | ");
+    const assignmentsLine = Array.isArray(groupAssignments) && groupAssignments.length
+      ? ` | שיוכים: ${groupAssignments.length}`
+      : "";
+    groupAssignmentsSummary.textContent = `חלוקה מאוזנת: ${sizeLine}${assignmentsLine}`;
+  }
+
+  function persistAdminGroupConfig(roomId = currentRoomId) {
+    if (!roomId) return;
+    localStorage.setItem(getParticipantsCountKey(roomId), String(Number(participantsCount || 0)));
+    localStorage.setItem(getGroupSizesKey(roomId), JSON.stringify(groupSizes || {}));
+    localStorage.setItem(getGroupAssignmentsKey(roomId), JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : []));
+    renderAssignmentsSummary();
+  }
+
+  function restoreAdminGroupConfig(roomId = currentRoomId) {
+    const rawCount = Number(localStorage.getItem(getParticipantsCountKey(roomId)) || 0);
+    participantsCount = Number.isInteger(rawCount) && rawCount > 0 ? rawCount : 0;
+    if (participantsCountInput) participantsCountInput.value = participantsCount > 0 ? String(participantsCount) : "";
+    try {
+      const parsedSizes = JSON.parse(localStorage.getItem(getGroupSizesKey(roomId)) || "{}");
+      groupSizes = parsedSizes && typeof parsedSizes === "object" ? parsedSizes : {};
+    } catch (_) {
+      groupSizes = {};
+    }
+    try {
+      const parsedAssignments = JSON.parse(localStorage.getItem(getGroupAssignmentsKey(roomId)) || "[]");
+      groupAssignments = Array.isArray(parsedAssignments) ? parsedAssignments : [];
+    } catch (_) {
+      groupAssignments = [];
+    }
+    renderAssignmentsSummary();
+  }
+
   function clearSessionRoomState(roomId = "") {
     const roomStatePrefixes = ["bioplay_admin_token_", "bioplay_last_created_room_name_"];
     const targetRoomId = String(roomId || "").trim();
@@ -2715,6 +2792,7 @@
     const savedDoors = parseInt(localStorage.getItem(getDoorsKey(currentRoomId)), 10);
     doorsCount = Math.max(1, Number.isFinite(savedDoors) ? savedDoors : 5);
     doorsSelect.value = String(doorsCount);
+    restoreAdminGroupConfig(currentRoomId);
     if (currentTeacherToken && currentRoomId) {
       sessionStorage.setItem(getSessKey(currentRoomId), currentTeacherToken);
       sessionStorage.setItem(getCreatedRoomNameKey(currentRoomId), lastSuccessfulCreatedRoom);
@@ -2756,6 +2834,25 @@
     doorsCount = parseInt(doorsSelect.value, 10) || 5;
     localStorage.setItem(getDoorsKey(currentRoomId), doorsCount);
     syncDashboardMeta(statusLabel.textContent.includes("פעיל") ? "פעיל" : "ממתין");
+  });
+
+  participantsCountInput?.addEventListener("change", () => {
+    const val = Number(participantsCountInput.value);
+    participantsCount = Number.isInteger(val) && val > 0 ? val : 0;
+    persistAdminGroupConfig(currentRoomId);
+  });
+
+  generateAssignmentsBtn?.addEventListener("click", () => {
+    const val = Number(participantsCountInput?.value || 0);
+    if (!Number.isInteger(val) || val <= 0) {
+      toast("יש להזין מספר משתתפים תקין לפני חלוקה", "error");
+      return;
+    }
+    participantsCount = val;
+    groupSizes = computeBalancedGroupSizes(participantsCount);
+    groupAssignments = [];
+    persistAdminGroupConfig(currentRoomId);
+    toast("החלוקה המאוזנת נוצרה בהצלחה", "success");
   });
 
   let toastT;
@@ -2967,6 +3064,9 @@
           roomName: selectedRoomName,
           doorsCount: String(doorsCountForCreate),
           enabledSteps: getEnabledSteps().join(","),
+          participantsCount: String(Number(participantsCount || 0)),
+          groupSizes: JSON.stringify(groupSizes || {}),
+          groupAssignments: JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : []),
         }).toString(),
       });
       const { data: d, raw } = await parseResponse(res);
@@ -3173,6 +3273,9 @@
           doorsCount: n,
           selectedDoors: pickInternalDoors(n),
           enabledSteps: getEnabledSteps(),
+          participantsCount: Number(participantsCount || 0),
+          groupSizes: groupSizes || {},
+          groupAssignments: Array.isArray(groupAssignments) ? groupAssignments : [],
           players: [],
         };
         localStorage.setItem(BIOPLAY_INTERNAL_LS_KEY_MAIN, JSON.stringify(st));
@@ -3224,7 +3327,10 @@
       const r = await sendAction("start", activeTeacherToken, {
         roomId: activeRoomId,
         doorsCount: String(doorsCount || 5),
-        enabledSteps: getEnabledSteps().join(",")
+        enabledSteps: getEnabledSteps().join(","),
+        participantsCount: String(Number(participantsCount || 0)),
+        groupSizes: JSON.stringify(groupSizes || {}),
+        groupAssignments: JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : [])
       });
       console.info("[admin] start action response", { roomId: activeRoomId, response: r });
       const resolvedCount = parseInt(r?.doorsCount, 10) || doorsCount;
