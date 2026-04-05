@@ -1875,18 +1875,9 @@
                 </select>
               </div>
               <div class="compact-field compact-field-doors">
-                <label for="doors-count-select">אורגניזמים</label>
+                <label for="doors-count-select">מספר הדלתות</label>
                 <select id="doors-count-select" class="count-select compact-select"></select>
               </div>
-            </div>
-            <div class="field-group compact-fields-row">
-              <div class="compact-field" style="flex:1 1 100%">
-                <label for="participants-count-input">מספר משתתפים</label>
-                <input id="participants-count-input" type="number" min="1" step="1" class="room-select compact-select" placeholder="הזינו מספר משתתפים" />
-              </div>
-            </div>
-            <div class="field-group compact-fields-row" style="margin-top:6px">
-              <button class="btn btn-room" id="generate-assignments-btn" type="button">צור חלוקה לקבוצות</button>
             </div>
             <div id="group-assignments-summary" style="font-size:.83rem;color:#2a4059;line-height:1.5;margin-top:6px"></div>
 
@@ -2489,8 +2480,6 @@
   const resetBtn = document.getElementById("reset-btn");
   const logoutBtn = document.getElementById("logout-btn");
   const doorsSelect = document.getElementById("doors-count-select");
-  const participantsCountInput = document.getElementById("participants-count-input");
-  const generateAssignmentsBtn = document.getElementById("generate-assignments-btn");
   const groupAssignmentsSummary = document.getElementById("group-assignments-summary");
   const guideSearchInput = document.getElementById("guide-search-input");
   const guideSearchDropdown = document.getElementById("guide-search-dropdown");
@@ -2665,23 +2654,28 @@
     groupAssignmentsSummary.textContent = `חלוקה מאוזנת: ${sizeLine}${assignmentsLine}`;
   }
 
+  function syncParticipantsFromDoors({ resetAssignments = false } = {}) {
+    participantsCount = Math.max(0, Number(doorsCount) || 0);
+    groupSizes = computeBalancedGroupSizes(participantsCount);
+    if (resetAssignments) groupAssignments = [];
+    renderAssignmentsSummary();
+  }
+
   function persistAdminGroupConfig(roomId = currentRoomId) {
     if (!roomId) return;
-    localStorage.setItem(getParticipantsCountKey(roomId), String(Number(participantsCount || 0)));
+    localStorage.setItem(getParticipantsCountKey(roomId), String(Number(doorsCount || 0)));
     localStorage.setItem(getGroupSizesKey(roomId), JSON.stringify(groupSizes || {}));
     localStorage.setItem(getGroupAssignmentsKey(roomId), JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : []));
     renderAssignmentsSummary();
   }
 
   function restoreAdminGroupConfig(roomId = currentRoomId) {
-    const rawCount = Number(localStorage.getItem(getParticipantsCountKey(roomId)) || 0);
-    participantsCount = Number.isInteger(rawCount) && rawCount > 0 ? rawCount : 0;
-    if (participantsCountInput) participantsCountInput.value = participantsCount > 0 ? String(participantsCount) : "";
+    participantsCount = Math.max(0, Number(doorsCount) || 0);
     try {
       const parsedSizes = JSON.parse(localStorage.getItem(getGroupSizesKey(roomId)) || "{}");
-      groupSizes = parsedSizes && typeof parsedSizes === "object" ? parsedSizes : {};
+      groupSizes = parsedSizes && typeof parsedSizes === "object" ? parsedSizes : computeBalancedGroupSizes(participantsCount);
     } catch (_) {
-      groupSizes = {};
+      groupSizes = computeBalancedGroupSizes(participantsCount);
     }
     try {
       const parsedAssignments = JSON.parse(localStorage.getItem(getGroupAssignmentsKey(roomId)) || "[]");
@@ -2689,6 +2683,7 @@
     } catch (_) {
       groupAssignments = [];
     }
+    groupSizes = computeBalancedGroupSizes(participantsCount);
     renderAssignmentsSummary();
   }
 
@@ -2793,6 +2788,8 @@
     doorsCount = Math.max(1, Number.isFinite(savedDoors) ? savedDoors : 5);
     doorsSelect.value = String(doorsCount);
     restoreAdminGroupConfig(currentRoomId);
+    syncParticipantsFromDoors();
+    persistAdminGroupConfig(currentRoomId);
     if (currentTeacherToken && currentRoomId) {
       sessionStorage.setItem(getSessKey(currentRoomId), currentTeacherToken);
       sessionStorage.setItem(getCreatedRoomNameKey(currentRoomId), lastSuccessfulCreatedRoom);
@@ -2833,26 +2830,9 @@
   doorsSelect.addEventListener("change", () => {
     doorsCount = parseInt(doorsSelect.value, 10) || 5;
     localStorage.setItem(getDoorsKey(currentRoomId), doorsCount);
+    syncParticipantsFromDoors({ resetAssignments: true });
+    persistAdminGroupConfig(currentRoomId);
     syncDashboardMeta(statusLabel.textContent.includes("פעיל") ? "פעיל" : "ממתין");
-  });
-
-  participantsCountInput?.addEventListener("change", () => {
-    const val = Number(participantsCountInput.value);
-    participantsCount = Number.isInteger(val) && val > 0 ? val : 0;
-    persistAdminGroupConfig(currentRoomId);
-  });
-
-  generateAssignmentsBtn?.addEventListener("click", () => {
-    const val = Number(participantsCountInput?.value || 0);
-    if (!Number.isInteger(val) || val <= 0) {
-      toast("יש להזין מספר משתתפים תקין לפני חלוקה", "error");
-      return;
-    }
-    participantsCount = val;
-    groupSizes = computeBalancedGroupSizes(participantsCount);
-    groupAssignments = [];
-    persistAdminGroupConfig(currentRoomId);
-    toast("החלוקה המאוזנת נוצרה בהצלחה", "success");
   });
 
   let toastT;
@@ -3064,7 +3044,7 @@
           roomName: selectedRoomName,
           doorsCount: String(doorsCountForCreate),
           enabledSteps: getEnabledSteps().join(","),
-          participantsCount: String(Number(participantsCount || 0)),
+          participantsCount: String(Number(doorsCount || 0)),
           groupSizes: JSON.stringify(groupSizes || {}),
           groupAssignments: JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : []),
         }).toString(),
@@ -3273,7 +3253,7 @@
           doorsCount: n,
           selectedDoors: pickInternalDoors(n),
           enabledSteps: getEnabledSteps(),
-          participantsCount: Number(participantsCount || 0),
+          participantsCount: Number(doorsCount || 0),
           groupSizes: groupSizes || {},
           groupAssignments: Array.isArray(groupAssignments) ? groupAssignments : [],
           players: [],
@@ -3328,7 +3308,7 @@
         roomId: activeRoomId,
         doorsCount: String(doorsCount || 5),
         enabledSteps: getEnabledSteps().join(","),
-        participantsCount: String(Number(participantsCount || 0)),
+        participantsCount: String(Number(doorsCount || 0)),
         groupSizes: JSON.stringify(groupSizes || {}),
         groupAssignments: JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : [])
       });
