@@ -1879,6 +1879,8 @@
                 <select id="doors-count-select" class="count-select compact-select"></select>
               </div>
             </div>
+            <input id="participants-count-input" type="hidden" />
+            <button class="btn btn-room" id="generate-assignments-btn" type="button" style="display:none" aria-hidden="true" tabindex="-1">צור חלוקה לקבוצות</button>
             <div id="group-assignments-summary" style="font-size:.83rem;color:#2a4059;line-height:1.5;margin-top:6px"></div>
 
             <div id="steps-toggles-container" style="display:none" aria-hidden="true">
@@ -2640,6 +2642,15 @@
     }, {});
   }
 
+  function syncParticipantsFromDoorsCount({ keepAssignments = false } = {}) {
+    participantsCount = Math.max(1, Number(doorsCount) || 5);
+    groupSizes = computeBalancedGroupSizes(participantsCount);
+    if (!keepAssignments) {
+      groupAssignments = [];
+    }
+    if (participantsCountInput) participantsCountInput.value = String(participantsCount);
+  }
+
   function renderAssignmentsSummary() {
     if (!groupAssignmentsSummary) return;
     const count = Number(participantsCount || 0);
@@ -2670,10 +2681,12 @@
   }
 
   function restoreAdminGroupConfig(roomId = currentRoomId) {
-    participantsCount = Math.max(0, Number(doorsCount) || 0);
+    syncParticipantsFromDoorsCount({ keepAssignments: true });
     try {
       const parsedSizes = JSON.parse(localStorage.getItem(getGroupSizesKey(roomId)) || "{}");
-      groupSizes = parsedSizes && typeof parsedSizes === "object" ? parsedSizes : computeBalancedGroupSizes(participantsCount);
+      groupSizes = parsedSizes && typeof parsedSizes === "object" && Object.keys(parsedSizes).length
+        ? parsedSizes
+        : computeBalancedGroupSizes(participantsCount);
     } catch (_) {
       groupSizes = computeBalancedGroupSizes(participantsCount);
     }
@@ -2683,7 +2696,7 @@
     } catch (_) {
       groupAssignments = [];
     }
-    groupSizes = computeBalancedGroupSizes(participantsCount);
+    if (participantsCountInput) participantsCountInput.value = String(participantsCount);
     renderAssignmentsSummary();
   }
 
@@ -2787,6 +2800,7 @@
     const savedDoors = parseInt(localStorage.getItem(getDoorsKey(currentRoomId)), 10);
     doorsCount = Math.max(1, Number.isFinite(savedDoors) ? savedDoors : 5);
     doorsSelect.value = String(doorsCount);
+    syncParticipantsFromDoorsCount({ keepAssignments: true });
     restoreAdminGroupConfig(currentRoomId);
     syncParticipantsFromDoors();
     persistAdminGroupConfig(currentRoomId);
@@ -2829,10 +2843,21 @@
 
   doorsSelect.addEventListener("change", () => {
     doorsCount = parseInt(doorsSelect.value, 10) || 5;
+    syncParticipantsFromDoorsCount();
     localStorage.setItem(getDoorsKey(currentRoomId), doorsCount);
-    syncParticipantsFromDoors({ resetAssignments: true });
     persistAdminGroupConfig(currentRoomId);
     syncDashboardMeta(statusLabel.textContent.includes("פעיל") ? "פעיל" : "ממתין");
+  });
+
+  participantsCountInput?.addEventListener("change", () => {
+    syncParticipantsFromDoorsCount();
+    persistAdminGroupConfig(currentRoomId);
+  });
+
+  generateAssignmentsBtn?.addEventListener("click", () => {
+    syncParticipantsFromDoorsCount();
+    persistAdminGroupConfig(currentRoomId);
+    toast("החלוקה המאוזנת עודכנה לפי מספר הדלתות", "success");
   });
 
   let toastT;
@@ -3044,8 +3069,8 @@
           roomName: selectedRoomName,
           doorsCount: String(doorsCountForCreate),
           enabledSteps: getEnabledSteps().join(","),
-          participantsCount: String(Number(doorsCount || 0)),
-          groupSizes: JSON.stringify(groupSizes || {}),
+          participantsCount: String(Number(doorsCountForCreate || 0)),
+          groupSizes: JSON.stringify(computeBalancedGroupSizes(doorsCountForCreate)),
           groupAssignments: JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : []),
         }).toString(),
       });
@@ -3253,8 +3278,8 @@
           doorsCount: n,
           selectedDoors: pickInternalDoors(n),
           enabledSteps: getEnabledSteps(),
-          participantsCount: Number(doorsCount || 0),
-          groupSizes: groupSizes || {},
+          participantsCount: Number(doorsCount || 5),
+          groupSizes: computeBalancedGroupSizes(doorsCount || 5),
           groupAssignments: Array.isArray(groupAssignments) ? groupAssignments : [],
           players: [],
         };
@@ -3308,8 +3333,8 @@
         roomId: activeRoomId,
         doorsCount: String(doorsCount || 5),
         enabledSteps: getEnabledSteps().join(","),
-        participantsCount: String(Number(doorsCount || 0)),
-        groupSizes: JSON.stringify(groupSizes || {}),
+        participantsCount: String(Number(doorsCount || 5)),
+        groupSizes: JSON.stringify(computeBalancedGroupSizes(doorsCount || 5)),
         groupAssignments: JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : [])
       });
       console.info("[admin] start action response", { roomId: activeRoomId, response: r });

@@ -4217,7 +4217,7 @@ function parseGroupAssignments(raw) {
 /** מחזיר את רשימת המסכים הפעילים לפי שלבים שנבחרו */
 function buildActiveScreenOrder() {
   const e = gameState.enabledSteps;
-  const order = ['name_entry', 'game_setup_guide', 'door_selection', 'step_1_identification'];
+  const order = ['name_entry', 'door_selection', 'step_1_identification'];
   if (e.includes(2)) order.push('step_2_secret');
   if (e.includes(3)) order.push('step_3_habitat');
   if (e.includes(2) || e.includes(3)) order.push('door_1', 'hybrid_group_discovery');
@@ -5450,15 +5450,24 @@ function clearSavedState() {
 }
 
 function applyAdminGroupConfig(statusPayload = {}) {
-  const parsedCount = Number(statusPayload?.participantsCount ?? statusPayload?.doorsCount);
-  if (Number.isInteger(parsedCount) && parsedCount > 0) {
-    gameState.participantsCount = parsedCount;
+  const parsedDoorCount = Number(statusPayload?.doorsCount);
+  const parsedParticipants = Number(statusPayload?.participantsCount);
+  const participantsCount = Number.isInteger(parsedDoorCount) && parsedDoorCount > 0
+    ? parsedDoorCount
+    : (Number.isInteger(parsedParticipants) && parsedParticipants > 0 ? parsedParticipants : 0);
+  if (participantsCount > 0) {
+    gameState.participantsCount = participantsCount;
   }
   const parsedSizes = parseGroupSizes(statusPayload?.groupSizes);
   if (parsedSizes && Object.keys(parsedSizes).length) {
     gameState.groupSizes = parsedSizes;
-  } else if (Number(gameState.participantsCount || 0) > 0) {
-    gameState.groupSizes = computeBalancedGroupSizes(gameState.participantsCount);
+  } else if (participantsCount > 0) {
+    const base = Math.floor(participantsCount / HYBRID_HABITATS.length);
+    const remainder = participantsCount % HYBRID_HABITATS.length;
+    gameState.groupSizes = HYBRID_HABITATS.reduce((acc, habitat, i) => {
+      acc[habitat] = base + (i < remainder ? 1 : 0);
+      return acc;
+    }, {});
   }
   const parsedAssignments = parseGroupAssignments(statusPayload?.groupAssignments);
   if (parsedAssignments.length) {
@@ -5473,7 +5482,9 @@ function applyAdminGroupConfig(statusPayload = {}) {
 function goToScreen(screenName) {
   closeStep6ZoomCleanup();
   setUiBusy(false);
-  gameState.currentScreen = normalizeScreenRoute(screenName);
+  const protectedScreens = new Set(['game_setup_guide', 'instructor_dashboard']);
+  const targetScreen = protectedScreens.has(screenName) ? 'door_selection' : screenName;
+  gameState.currentScreen = normalizeScreenRoute(targetScreen);
   gameState.ui.hintOpen    = false;
   clearStatus();
   saveGameState();
@@ -5814,7 +5825,7 @@ function renderStatus() {
    ============================================================ */
 
 const SCREEN_ORDER = [
-  "name_entry", "game_setup_guide", "waiting_room", "door_selection",
+  "name_entry", "waiting_room", "door_selection",
   "step_1_identification", "step_2_secret", "step_3_habitat",
   "door_1", "hybrid_group_discovery", "door_1_dyk",
   "step_5_nature_invention_match", "step_6_count_elements",
@@ -5823,8 +5834,6 @@ const SCREEN_ORDER = [
 ];
 const SCREEN_LABELS = {
   "name_entry":                   "כניסה למשחק",
-  "game_setup_guide":             "מדריך / הגדרת משחק",
-  "instructor_dashboard":         "דשבורד מדריך",
   "waiting_room":                 "ממתינים להתחלה...",
   "door_selection":               "בחרו דלת",
   "step_1_identification":        "שלב 1 – שער הגילוי הנסתר",
@@ -5914,7 +5923,6 @@ function applyScreenScaleClass(screenName) {
   if (!app) return;
   const playerFlowScreens = [
     'name_entry',
-    'game_setup_guide',
     'waiting_room',
     'door_selection',
     'step_1_identification',
@@ -5924,7 +5932,6 @@ function applyScreenScaleClass(screenName) {
   ];
   const zoom60Screens = [
     'name_entry',
-    'game_setup_guide',
     'waiting_room',
     'door_selection',
     'step_1_identification',
@@ -6669,6 +6676,7 @@ async function _pollNameEntryStatus() {
     if (Array.isArray(data.enabledSteps) && data.enabledSteps.length > 0)
       gameState.enabledSteps = data.enabledSteps;
     gameState.doorsCount = Number(data.doorsCount || gameState.doorsCount || 0);
+    gameState.participantsCount = Number(gameState.doorsCount || gameState.participantsCount || 0);
     dbgInfo('[student/game] transition condition met', {
       reason: 'status active/started',
       status: data?.status || null,
@@ -6836,7 +6844,7 @@ function startCountdownWithNarration() {
     clearInterval(intervalId);
     stopAllMedia();
     overlay.remove();
-    goToScreen('game_setup_guide');
+    goToScreen('door_selection');
   }
 
   function runCountdown(keepVideo = false) {
@@ -6992,17 +7000,7 @@ window.submitPlayerName = async function() {
 };
 
 function renderGameSetupGuide() {
-  setScreen(`
-    <div class="card">
-      <div class="screen-eyebrow">הכנה למשחק</div>
-      <h2 class="screen-title">לפני תחילת המסע</h2>
-      <p class="screen-body">המשחק ימשיך ברגע שהמדריך ישלים את ההגדרה בלוח ההפעלה.</p>
-      <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;margin:0 auto">
-        <p class="screen-body" style="margin:0;font-size:.95rem">אין צורך בהגדרות מצד השחקנים.</p>
-        <button class="btn btn-primary" onclick="goToScreen(gameState.selectedDoor ? 'step_1_identification' : 'door_selection')">המשך למסע</button>
-      </div>
-    </div>
-  `);
+  goToScreen('door_selection');
 }
 
 function renderInstructorDashboard() {
@@ -7570,7 +7568,7 @@ function renderHybridGroupDiscovery() {
     <div class="card">
       <div class="screen-eyebrow">מסך גילוי קבוצות</div>
       <h2 class="screen-title">אתם בקבוצת: ${escapeHTML(habitat)}</h2>
-      <p class="screen-body">החלוקה נקבעה מראש. המשיכו לשלב ההתאמה ההיברידי.</p>
+      <p class="screen-body">המשיכו לשלב ההתאמה הקבוצתי.</p>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="goToScreen('step_5_nature_invention_match')">המשך לשלב התאמה היברידי</button>
       </div>
