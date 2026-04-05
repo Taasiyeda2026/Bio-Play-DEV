@@ -2662,9 +2662,16 @@
     groupAssignmentsSummary.textContent = `חלוקה מאוזנת: ${sizeLine}${assignmentsLine}`;
   }
 
+  function syncParticipantsFromDoors({ resetAssignments = false } = {}) {
+    participantsCount = Math.max(0, Number(doorsCount) || 0);
+    groupSizes = computeBalancedGroupSizes(participantsCount);
+    if (resetAssignments) groupAssignments = [];
+    renderAssignmentsSummary();
+  }
+
   function persistAdminGroupConfig(roomId = currentRoomId) {
     if (!roomId) return;
-    localStorage.setItem(getParticipantsCountKey(roomId), String(Number(participantsCount || 0)));
+    localStorage.setItem(getParticipantsCountKey(roomId), String(Number(doorsCount || 0)));
     localStorage.setItem(getGroupSizesKey(roomId), JSON.stringify(groupSizes || {}));
     localStorage.setItem(getGroupAssignmentsKey(roomId), JSON.stringify(Array.isArray(groupAssignments) ? groupAssignments : []));
     renderAssignmentsSummary();
@@ -2686,6 +2693,7 @@
     } catch (_) {
       groupAssignments = [];
     }
+    if (participantsCountInput) participantsCountInput.value = String(participantsCount);
     renderAssignmentsSummary();
   }
 
@@ -2791,6 +2799,8 @@
     doorsSelect.value = String(doorsCount);
     syncParticipantsFromDoorsCount({ keepAssignments: true });
     restoreAdminGroupConfig(currentRoomId);
+    syncParticipantsFromDoors();
+    persistAdminGroupConfig(currentRoomId);
     if (currentTeacherToken && currentRoomId) {
       sessionStorage.setItem(getSessKey(currentRoomId), currentTeacherToken);
       sessionStorage.setItem(getCreatedRoomNameKey(currentRoomId), lastSuccessfulCreatedRoom);
