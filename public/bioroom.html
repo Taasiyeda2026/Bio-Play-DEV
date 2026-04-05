@@ -5440,13 +5440,24 @@ function clearSavedState() {
 }
 
 function applyAdminGroupConfig(statusPayload = {}) {
-  const parsedCount = Number(statusPayload?.participantsCount);
-  if (Number.isInteger(parsedCount) && parsedCount > 0) {
-    gameState.participantsCount = parsedCount;
+  const parsedDoorCount = Number(statusPayload?.doorsCount);
+  const parsedParticipants = Number(statusPayload?.participantsCount);
+  const participantsCount = Number.isInteger(parsedDoorCount) && parsedDoorCount > 0
+    ? parsedDoorCount
+    : (Number.isInteger(parsedParticipants) && parsedParticipants > 0 ? parsedParticipants : 0);
+  if (participantsCount > 0) {
+    gameState.participantsCount = participantsCount;
   }
   const parsedSizes = parseGroupSizes(statusPayload?.groupSizes);
   if (parsedSizes && Object.keys(parsedSizes).length) {
     gameState.groupSizes = parsedSizes;
+  } else if (participantsCount > 0) {
+    const base = Math.floor(participantsCount / HYBRID_HABITATS.length);
+    const remainder = participantsCount % HYBRID_HABITATS.length;
+    gameState.groupSizes = HYBRID_HABITATS.reduce((acc, habitat, i) => {
+      acc[habitat] = base + (i < remainder ? 1 : 0);
+      return acc;
+    }, {});
   }
   const parsedAssignments = parseGroupAssignments(statusPayload?.groupAssignments);
   if (parsedAssignments.length) {
@@ -6428,7 +6439,7 @@ async function apiGet(action, extra = {}) {
       doorsCount: st?.doorsCount || 5,
       selectedDoors: Array.isArray(st?.selectedDoors) ? st.selectedDoors : [],
       enabledSteps: Array.isArray(st?.enabledSteps) ? st.enabledSteps : [1, 2, 3, 4, 5, 6],
-      participantsCount: Number(st?.participantsCount || 0) || 0,
+      participantsCount: Number(st?.doorsCount || st?.participantsCount || 0) || 0,
       groupSizes: st?.groupSizes && typeof st.groupSizes === 'object' ? st.groupSizes : {},
       groupAssignments: Array.isArray(st?.groupAssignments) ? st.groupAssignments : [],
       startedAtMs: Number(st?.startedAt || 0) || 0,
@@ -6657,6 +6668,7 @@ async function _pollNameEntryStatus() {
     if (Array.isArray(data.enabledSteps) && data.enabledSteps.length > 0)
       gameState.enabledSteps = data.enabledSteps;
     gameState.doorsCount = Number(data.doorsCount || gameState.doorsCount || 0);
+    gameState.participantsCount = Number(gameState.doorsCount || gameState.participantsCount || 0);
     dbgInfo('[student/game] transition condition met', {
       reason: 'status active/started',
       status: data?.status || null,
@@ -6980,18 +6992,7 @@ window.submitPlayerName = async function() {
 };
 
 function renderGameSetupGuide() {
-  setScreen(`
-    <div class="card">
-      <div class="screen-eyebrow">הכנה למשחק</div>
-      <h2 class="screen-title">לפני תחילת המסע</h2>
-      <p class="screen-body">מספר משתתפים וחלוקה לקבוצות מוגדרים בלוח האדמין בלבד.</p>
-      <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;margin:0 auto">
-        <p class="screen-body" style="margin:0;font-size:.95rem">אם ההגדרות עדיין לא מוכנות, פנו למדריך.</p>
-        <button class="btn btn-primary" onclick="goToScreen(gameState.selectedDoor ? 'step_1_identification' : 'door_selection')">המשך למסע</button>
-        <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
-      </div>
-    </div>
-  `);
+  goToScreen(gameState.selectedDoor ? 'step_1_identification' : 'door_selection');
 }
 
 function renderInstructorDashboard() {
@@ -7576,7 +7577,7 @@ function renderHybridGroupDiscovery() {
       <div class="card">
         <div class="screen-eyebrow">מסך גילוי קבוצות</div>
         <h2 class="screen-title">לא ניתן להמשיך עדיין</h2>
-        <p class="screen-body">ההגדרות עדיין לא הוזנו בלוח האדמין. פנו למדריך.</p>
+        <p class="screen-body">המשחק עדיין לא הוגדר בלוח המדריך. פנו למדריך.</p>
       </div>
     `);
     return;
@@ -7584,15 +7585,12 @@ function renderHybridGroupDiscovery() {
   const habitat = getActiveHabitat();
   gameState.activeGroupHabitat = habitat;
   saveGameState();
-  const sizesSummary = HYBRID_HABITATS.map((h) => `<li>${escapeHTML(h)}: <strong>${Number(gameState.groupSizes?.[h] || 0)}</strong></li>`).join('');
   setScreen(`
     <div class="card">
       <div class="screen-eyebrow">מסך גילוי קבוצות</div>
       <h2 class="screen-title">אתם בקבוצת: ${escapeHTML(habitat)}</h2>
-      <p class="screen-body">החלוקה נקבעה מראש על ידי המדריך בלוח האדמין.</p>
-      <ul style="padding-right:18px">${sizesSummary}</ul>
+      <p class="screen-body">המשיכו לשלב ההתאמה הקבוצתי.</p>
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
         <button class="btn btn-primary" onclick="goToScreen('step_5_nature_invention_match')">המשך לשלב התאמה היברידי</button>
       </div>
     </div>
@@ -7667,7 +7665,6 @@ function renderStep5() {
       <p class="screen-body" style="margin-top:8px">מונה: <strong>${progress.solvedCount}</strong> מתוך 7 הושלמו</p>
       ${message}
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
         <button class="btn btn-primary" ${progress.secretRevealed ? '' : 'disabled'} onclick="window.hybridConfirmCardAndContinue()">קיבלנו את הקלף – המשך</button>
       </div>
     </div>
