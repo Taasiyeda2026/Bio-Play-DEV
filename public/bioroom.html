@@ -4115,6 +4115,63 @@ const STEP_SCORES = {
 const DOOR_1_CODE = STEP_1_CODE + STEP_2_CODE + STEP_3_CODE;                                       /* "213" */
 const DOOR_2_CODE = STEP_5_SECRET_DIGIT_1 + STEP_5_SECRET_DIGIT_2 + String(STEP_6_CORRECT_COUNT);  /* "424" */
 
+const HYBRID_HABITATS = Object.freeze(['בית', 'יער', 'ים', 'סוואנה', 'מדבר']);
+const HYBRID_SECRET_SENTENCES = Object.freeze({
+  'בית': 'משפט סודי 1',
+  'יער': 'משפט סודי 2',
+  'ים': 'משפט סודי 3',
+  'סוואנה': 'משפט סודי 4',
+  'מדבר': 'משפט סודי 5',
+});
+const HYBRID_CARD_HOLDER_MAP = Object.freeze({
+  'בית': 'יער',
+  'יער': 'ים',
+  'ים': 'סוואנה',
+  'סוואנה': 'מדבר',
+  'מדבר': 'בית',
+});
+const HYBRID_PAIRS = Object.freeze([
+  { pairId: 1, habitat: 'בית', number1: '15', number2: '10' },
+  { pairId: 2, habitat: 'בית', number1: '25', number2: '08' },
+  { pairId: 3, habitat: 'בית', number1: '23', number2: '66' },
+  { pairId: 4, habitat: 'בית', number1: '46', number2: '86' },
+  { pairId: 5, habitat: 'בית', number1: '83', number2: '75' },
+  { pairId: 6, habitat: 'בית', number1: '90', number2: '58' },
+  { pairId: 7, habitat: 'בית', number1: '77', number2: '15' },
+  { pairId: 8, habitat: 'יער', number1: '82', number2: '19' },
+  { pairId: 9, habitat: 'יער', number1: '36', number2: '22' },
+  { pairId: 10, habitat: 'יער', number1: '72', number2: '20' },
+  { pairId: 11, habitat: 'יער', number1: '24', number2: '34' },
+  { pairId: 12, habitat: 'יער', number1: '46', number2: '38' },
+  { pairId: 13, habitat: 'יער', number1: '99', number2: '68' },
+  { pairId: 14, habitat: 'יער', number1: '02', number2: '39' },
+  { pairId: 15, habitat: 'ים', number1: '14', number2: '23' },
+  { pairId: 16, habitat: 'ים', number1: '26', number2: '40' },
+  { pairId: 17, habitat: 'ים', number1: '73', number2: '78' },
+  { pairId: 18, habitat: 'ים', number1: '29', number2: '44' },
+  { pairId: 19, habitat: 'ים', number1: '19', number2: '49' },
+  { pairId: 20, habitat: 'ים', number1: '68', number2: '82' },
+  { pairId: 21, habitat: 'ים', number1: '24', number2: '10' },
+  { pairId: 22, habitat: 'סוואנה', number1: '33', number2: '01' },
+  { pairId: 23, habitat: 'סוואנה', number1: '74', number2: '08' },
+  { pairId: 24, habitat: 'סוואנה', number1: '49', number2: '81' },
+  { pairId: 25, habitat: 'סוואנה', number1: '55', number2: '53' },
+  { pairId: 26, habitat: 'סוואנה', number1: '58', number2: '55' },
+  { pairId: 27, habitat: 'סוואנה', number1: '40', number2: '64' },
+  { pairId: 28, habitat: 'סוואנה', number1: '91', number2: '35' },
+  { pairId: 29, habitat: 'מדבר', number1: '73', number2: '37' },
+  { pairId: 30, habitat: 'מדבר', number1: '25', number2: '40' },
+  { pairId: 31, habitat: 'מדבר', number1: '96', number2: '09' },
+  { pairId: 32, habitat: 'מדבר', number1: '68', number2: '11' },
+  { pairId: 33, habitat: 'מדבר', number1: '77', number2: '12' },
+  { pairId: 34, habitat: 'מדבר', number1: '89', number2: '11' },
+  { pairId: 35, habitat: 'מדבר', number1: '16', number2: '18' },
+].map((pair) => ({ ...pair, fullCode: `${pair.number1}${pair.number2}` })));
+
+function getHybridPairsByHabitat(habitat) {
+  return HYBRID_PAIRS.filter((pair) => pair.habitat === habitat);
+}
+
 /* ============================================================
    DYNAMIC STEP ROUTING
    ============================================================ */
@@ -4122,10 +4179,10 @@ const DOOR_2_CODE = STEP_5_SECRET_DIGIT_1 + STEP_5_SECRET_DIGIT_2 + String(STEP_
 /** מחזיר את רשימת המסכים הפעילים לפי שלבים שנבחרו */
 function buildActiveScreenOrder() {
   const e = gameState.enabledSteps;
-  const order = ['name_entry', 'door_selection', 'step_1_identification'];
+  const order = ['name_entry', 'game_setup_guide', 'door_selection', 'step_1_identification'];
   if (e.includes(2)) order.push('step_2_secret');
   if (e.includes(3)) order.push('step_3_habitat');
-  if (e.includes(2) || e.includes(3)) order.push('door_1', 'door_1_dyk');
+  if (e.includes(2) || e.includes(3)) order.push('door_1', 'hybrid_group_discovery');
   if (e.includes(4)) order.push('step_5_nature_invention_match');
   if (e.includes(5)) order.push('step_6_count_elements');
   if (e.includes(4) || e.includes(5)) order.push('door_2', 'door_2_dyk');
@@ -4141,6 +4198,14 @@ function getNextScreen(current) {
 }
 
 function normalizeScreenRoute(screenName) {
+  if (
+    screenName !== 'name_entry' &&
+    screenName !== 'game_setup_guide' &&
+    screenName !== 'instructor_dashboard' &&
+    (!Number.isInteger(Number(gameState.participantsCount)) || Number(gameState.participantsCount) <= 0)
+  ) {
+    return 'game_setup_guide';
+  }
   if (screenName === 'door_1_dyk') {
     if (!gameState.progress.door1Unlocked) return 'door_1';
     if (gameState.progress.door1DykViewed) return getNextScreen('door_1_dyk');
@@ -5081,6 +5146,9 @@ rebuildDykByOrganism();
 
 const gameState = {
   currentScreen: "name_entry",
+  participantsCount: 0,
+  groupAssignments: [],
+  activeGroupHabitat: null,
 
   selectedDoor:    null,   /* { num, organism, doorImg, prdImg, fact } */
   firstDoorOrganism: '',
@@ -5175,7 +5243,57 @@ const gameState = {
     step6: 0,
     step8: 0,
   },
+
+  hybrid: {
+    activeParticipantNumber: 1,
+    cardTransfers: { ...HYBRID_CARD_HOLDER_MAP },
+    perGroupProgress: {}
+  }
 };
+
+function buildHybridDefaultProgress() {
+  const progress = {};
+  HYBRID_HABITATS.forEach((habitat) => {
+    progress[habitat] = {
+      solvedPairs: [],
+      solvedCount: 0,
+      secretRevealed: false,
+      cardConfirmed: false,
+      score: 0,
+      secretSentence: HYBRID_SECRET_SENTENCES[habitat],
+      cardHeldByGroup: HYBRID_CARD_HOLDER_MAP[habitat],
+    };
+  });
+  return progress;
+}
+
+function ensureHybridState() {
+  if (!gameState.hybrid || typeof gameState.hybrid !== 'object') gameState.hybrid = {};
+  if (!Number.isInteger(gameState.hybrid.activeParticipantNumber) || gameState.hybrid.activeParticipantNumber < 1) {
+    gameState.hybrid.activeParticipantNumber = 1;
+  }
+  if (!gameState.hybrid.cardTransfers || typeof gameState.hybrid.cardTransfers !== 'object') {
+    gameState.hybrid.cardTransfers = { ...HYBRID_CARD_HOLDER_MAP };
+  }
+  if (!gameState.hybrid.perGroupProgress || typeof gameState.hybrid.perGroupProgress !== 'object') {
+    gameState.hybrid.perGroupProgress = buildHybridDefaultProgress();
+  }
+  HYBRID_HABITATS.forEach((habitat) => {
+    if (!gameState.hybrid.perGroupProgress[habitat]) {
+      gameState.hybrid.perGroupProgress[habitat] = buildHybridDefaultProgress()[habitat];
+      return;
+    }
+    const p = gameState.hybrid.perGroupProgress[habitat];
+    if (!Array.isArray(p.solvedPairs)) p.solvedPairs = [];
+    p.solvedCount = Number.isFinite(Number(p.solvedCount)) ? Number(p.solvedCount) : p.solvedPairs.length;
+    p.secretRevealed = Boolean(p.secretRevealed);
+    p.cardConfirmed = Boolean(p.cardConfirmed);
+    p.score = Number.isFinite(Number(p.score)) ? Number(p.score) : 0;
+    p.secretSentence = p.secretSentence || HYBRID_SECRET_SENTENCES[habitat];
+    p.cardHeldByGroup = p.cardHeldByGroup || HYBRID_CARD_HOLDER_MAP[habitat];
+  });
+}
+ensureHybridState();
 
 /* ============================================================
    PERSISTENCE (מפתח נפרד לכל roomId — בלי ערבוב בין חדרים)
@@ -5197,6 +5315,9 @@ function saveGameState() {
     firstDoorOrganism: gameState.firstDoorOrganism,
     selectedDoorIds: gameState.selectedDoorIds,
     enabledSteps:    gameState.enabledSteps,
+    participantsCount: Number(gameState.participantsCount || 0),
+    groupAssignments: Array.isArray(gameState.groupAssignments) ? [...gameState.groupAssignments] : [],
+    activeGroupHabitat: gameState.activeGroupHabitat || null,
     player:          { ...gameState.player },
     progress:      { ...gameState.progress },
     codes:         { ...gameState.codes },
@@ -5217,6 +5338,23 @@ function saveGameState() {
       step6VictoryPts: Number.isFinite(Number(gameState.ui.step6VictoryPts)) ? Number(gameState.ui.step6VictoryPts) : null,
       step6FlowIntroShown: Boolean(gameState.ui.step6FlowIntroShown),
     },
+    hybrid: {
+      activeParticipantNumber: Number(gameState.hybrid?.activeParticipantNumber || 1),
+      cardTransfers: { ...(gameState.hybrid?.cardTransfers || {}) },
+      perGroupProgress: HYBRID_HABITATS.reduce((acc, habitat) => {
+        const p = gameState.hybrid?.perGroupProgress?.[habitat] || {};
+        acc[habitat] = {
+          solvedPairs: Array.isArray(p.solvedPairs) ? [...p.solvedPairs] : [],
+          solvedCount: Number(p.solvedCount || 0),
+          secretRevealed: Boolean(p.secretRevealed),
+          cardConfirmed: Boolean(p.cardConfirmed),
+          score: Number(p.score || 0),
+          secretSentence: p.secretSentence || HYBRID_SECRET_SENTENCES[habitat],
+          cardHeldByGroup: p.cardHeldByGroup || HYBRID_CARD_HOLDER_MAP[habitat],
+        };
+        return acc;
+      }, {}),
+    }
   };
   sessionStorage.setItem(bioroomSessionStateKey(), JSON.stringify(snapshot));
 }
@@ -5233,6 +5371,9 @@ function loadGameState() {
                                                                 gameState.selectedDoorIds = parsed.selectedDoorIds;
     if (Array.isArray(parsed.enabledSteps)    && parsed.enabledSteps.length > 0)
                                                                 gameState.enabledSteps    = parsed.enabledSteps;
+    gameState.participantsCount = Number(parsed.participantsCount || 0);
+    gameState.groupAssignments = Array.isArray(parsed.groupAssignments) ? parsed.groupAssignments : [];
+    gameState.activeGroupHabitat = parsed.activeGroupHabitat || null;
     if (parsed.player)    Object.assign(gameState.player,    parsed.player);
     if (parsed._attempts) Object.assign(gameState._attempts, parsed._attempts);
     if (parsed.ui) {
@@ -5255,6 +5396,8 @@ function loadGameState() {
     Object.assign(gameState.progress, parsed.progress || {});
     Object.assign(gameState.codes,    parsed.codes    || {});
     Object.assign(gameState.answers,  parsed.answers  || {});
+    if (parsed.hybrid) gameState.hybrid = parsed.hybrid;
+    ensureHybridState();
     if (gameState.progress.step5Solved && gameState.ui.step5VictoryPts == null) {
       gameState.ui.step5VictoryPts = STEP_SCORES.step5;
     }
@@ -5305,6 +5448,9 @@ function getScreenBackground(screenName) {
     case 'name_entry':
     case 'waiting_room':
       return BG(1);
+    case 'game_setup_guide':
+    case 'instructor_dashboard':
+      return BG(2);
     case 'door_selection':
       return BG(2);
     case 'step_1_identification':
@@ -5314,6 +5460,8 @@ function getScreenBackground(screenName) {
     case 'step_3_habitat':
       return BG(5);
     case 'door_1':
+      return BG(6);
+    case 'hybrid_group_discovery':
       return BG(6);
     case 'step_5_nature_invention_match':
       return BG(7);
@@ -5616,21 +5764,24 @@ function renderStatus() {
    ============================================================ */
 
 const SCREEN_ORDER = [
-  "name_entry", "waiting_room", "door_selection",
+  "name_entry", "game_setup_guide", "waiting_room", "door_selection",
   "step_1_identification", "step_2_secret", "step_3_habitat",
-  "door_1", "door_1_dyk",
+  "door_1", "hybrid_group_discovery", "door_1_dyk",
   "step_5_nature_invention_match", "step_6_count_elements",
   "door_2", "door_2_dyk",
   "step_8_cipher", "final_screen"
 ];
 const SCREEN_LABELS = {
   "name_entry":                   "כניסה למשחק",
+  "game_setup_guide":             "מדריך / הגדרת משחק",
+  "instructor_dashboard":         "דשבורד מדריך",
   "waiting_room":                 "ממתינים להתחלה...",
   "door_selection":               "בחרו דלת",
   "step_1_identification":        "שלב 1 – שער הגילוי הנסתר",
   "step_2_secret":                "שלב 2 – שער הכוח הסודי",
   "step_3_habitat":               "שלב 3 – שער ממלכת החיים",
   "door_1":                       "דלת 1",
+  "hybrid_group_discovery":       "גילוי קבוצות",
   "door_1_dyk":                   "הידעת? 1",
   "step_5_nature_invention_match":"שלב 4 – שער ההשראה החכמה",
   "step_6_count_elements":        "שלב 5 – שער החיפוש הקסום",
@@ -5713,6 +5864,7 @@ function applyScreenScaleClass(screenName) {
   if (!app) return;
   const playerFlowScreens = [
     'name_entry',
+    'game_setup_guide',
     'waiting_room',
     'door_selection',
     'step_1_identification',
@@ -5722,6 +5874,7 @@ function applyScreenScaleClass(screenName) {
   ];
   const zoom60Screens = [
     'name_entry',
+    'game_setup_guide',
     'waiting_room',
     'door_selection',
     'step_1_identification',
@@ -6053,12 +6206,15 @@ function renderCurrentScreen() {
   applyScreenScaleClass(gameState.currentScreen);
   switch (gameState.currentScreen) {
     case "name_entry":                   return renderNameEntry();
+    case "game_setup_guide":             return renderGameSetupGuide();
+    case "instructor_dashboard":         return renderInstructorDashboard();
     case "waiting_room":                 return renderWaitingRoom();
     case "door_selection":               return renderDoorSelection();
     case "step_1_identification":        return renderStep1();
     case "step_2_secret":                return renderStep2();
     case "step_3_habitat":               return renderStep3();
     case "door_1":                       return renderDoor1();
+    case "hybrid_group_discovery":       return renderHybridGroupDiscovery();
     case "door_1_dyk":                   return renderDoor1DykScreen();
     case "step_5_nature_invention_match":return renderStep5();
     case "step_6_count_elements":        return renderStep6();
@@ -6316,6 +6472,33 @@ function attemptsErrorMsg(stepKey) {
   if (count === 2) return "לא נכון ⚠️ — שגיאה שנייה. פתרון נכון מכאן לא יזכה בניקוד.";
   /* count≥3: ממשיכים לנסות, ללא ניקוד */
   return "לא נכון 😔 — נסו שוב. לא ייזקף ניקוד על שאלה זו.";
+}
+
+function buildBalancedAssignments(participantsCount) {
+  const total = Math.max(0, Number(participantsCount) || 0);
+  if (!total) return [];
+  const base = Math.floor(total / HYBRID_HABITATS.length);
+  const remainder = total % HYBRID_HABITATS.length;
+  const assignments = [];
+  let participantNumber = 1;
+  HYBRID_HABITATS.forEach((habitat, index) => {
+    const size = base + (index < remainder ? 1 : 0);
+    for (let i = 0; i < size; i++) {
+      assignments.push({ participantNumber, habitat });
+      participantNumber += 1;
+    }
+  });
+  return assignments;
+}
+
+function getActiveParticipantAssignment() {
+  const participantNumber = Number(gameState.hybrid?.activeParticipantNumber || 1);
+  return gameState.groupAssignments.find((assignment) => Number(assignment.participantNumber) === participantNumber) || null;
+}
+
+function getActiveHabitat() {
+  const assignment = getActiveParticipantAssignment();
+  return assignment?.habitat || gameState.activeGroupHabitat || HYBRID_HABITATS[0];
 }
 
 /* ============================================================
@@ -6593,22 +6776,7 @@ function startCountdownWithNarration() {
     clearInterval(intervalId);
     stopAllMedia();
     overlay.remove();
-    if (gameState.selectedDoor) {
-      goToScreen('step_1_identification');
-      return;
-    }
-    const ids = Array.isArray(gameState.selectedDoorIds) ? gameState.selectedDoorIds.filter(Number.isFinite) : [];
-    if (ids.length === 1) {
-      const onlyDoor = DOOR_MAPPING.find(d => d.num === ids[0]);
-      if (onlyDoor) {
-        gameState.selectedDoor = onlyDoor;
-        applySelectedDoorContent();
-        saveGameState();
-        goToScreen('step_1_identification');
-        return;
-      }
-    }
-    goToScreen('door_selection');
+    goToScreen('game_setup_guide');
   }
 
   function runCountdown(keepVideo = false) {
@@ -6762,6 +6930,71 @@ window.submitPlayerName = async function() {
   startCountdownWithNarration();
   await apiPost('gamejoin', { name, participantId });
 };
+
+function renderGameSetupGuide() {
+  setScreen(`
+    <div class="card">
+      <div class="screen-eyebrow">מדריך / הגדרת משחק</div>
+      <h2 class="screen-title">לפני תחילת המסע</h2>
+      <p class="screen-body">הזינו מספר משתתפים (מספר שלם גדול מ־0). החלוקה לקבוצות תתבצע רק לאחר פתיחת דלת 1.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;margin:0 auto">
+        <input id="participants-count-input" type="number" min="1" step="1" value="${Number(gameState.participantsCount || '') || ''}" class="vault-digit" style="width:100%;max-width:none;height:56px;font-size:1.2rem" />
+        <button class="btn btn-primary" onclick="window.saveParticipantsAndStart()">שמור והמשך למסע</button>
+        <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
+      </div>
+    </div>
+  `);
+}
+
+window.saveParticipantsAndStart = function() {
+  const inputEl = document.getElementById('participants-count-input');
+  const raw = Number(inputEl?.value);
+  if (!Number.isInteger(raw) || raw <= 0) {
+    showError('יש להזין מספר משתתפים תקין (שלם גדול מ־0).');
+    return;
+  }
+  gameState.participantsCount = raw;
+  saveGameState();
+  if (gameState.selectedDoor) {
+    goToScreen('step_1_identification');
+    return;
+  }
+  goToScreen('door_selection');
+};
+
+function renderInstructorDashboard() {
+  ensureHybridState();
+  const assignmentsHtml = (gameState.groupAssignments || []).length
+    ? gameState.groupAssignments.map((assignment) => `<li>משתתף ${assignment.participantNumber}: <strong>${escapeHTML(assignment.habitat)}</strong></li>`).join('')
+    : '<li>אין חלוקה עדיין (תבוצע לאחר דלת 1).</li>';
+  const groupsHtml = HYBRID_HABITATS.map((habitat) => {
+    const p = gameState.hybrid.perGroupProgress[habitat];
+    const pairs = getHybridPairsByHabitat(habitat);
+    return `<div style="margin-top:12px;padding:10px;border:1px solid rgba(0,232,180,.2);border-radius:10px">
+      <div><strong>${escapeHTML(habitat)}</strong> | הושלמו: ${Number(p.solvedCount || 0)}/7</div>
+      <div>משפט סודי: ${escapeHTML(p.secretSentence)}</div>
+      <div>קלף מאומת ע"י קבוצה: ${escapeHTML(p.cardHeldByGroup || HYBRID_CARD_HOLDER_MAP[habitat])}</div>
+      <div>חשיפת משפט: ${p.secretRevealed ? 'כן' : 'לא'} | אישור קלף: ${p.cardConfirmed ? 'כן' : 'לא'}</div>
+      <ul style="margin-top:6px;padding-right:18px">
+        ${pairs.map((pair) => `<li>#${pair.pairId} → ${escapeHTML(pair.fullCode)}</li>`).join('')}
+      </ul>
+    </div>`;
+  }).join('');
+  setScreen(`
+    <div class="card">
+      <div class="screen-eyebrow">מסך מדריך</div>
+      <h2 class="screen-title">דשבורד מצב מלא</h2>
+      <p class="screen-body">מספר משתתפים: <strong>${Number(gameState.participantsCount || 0)}</strong></p>
+      <h3 style="margin-top:10px">חלוקה לקבוצות</h3>
+      <ul style="padding-right:18px">${assignmentsHtml}</ul>
+      ${groupsHtml}
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn btn-secondary" onclick="goToScreen('game_setup_guide')">חזרה להגדרה</button>
+        <button class="btn btn-primary" onclick="goToScreen('${escapeHTML(gameState.progress.door1Unlocked ? 'hybrid_group_discovery' : 'step_1_identification')}')">חזרה למשחק</button>
+      </div>
+    </div>
+  `);
+}
 
 /* ============================================================
    WAITING ROOM SCREEN  (fallback – כבר לא בשימוש רגיל)
@@ -7283,64 +7516,130 @@ window.submitDoor1 = function() {
   setTimeout(() => unlockDoor1(), 850);
 };
 
+function renderHybridGroupDiscovery() {
+  if (!gameState.progress.door1Unlocked) {
+    goToScreen('door_1');
+    return;
+  }
+  if (!Number.isInteger(Number(gameState.participantsCount)) || Number(gameState.participantsCount) <= 0) {
+    showError('חסר מספר משתתפים. חזרו למסך ההגדרה.');
+    goToScreen('game_setup_guide');
+    return;
+  }
+  if (!Array.isArray(gameState.groupAssignments) || gameState.groupAssignments.length !== Number(gameState.participantsCount)) {
+    gameState.groupAssignments = buildBalancedAssignments(Number(gameState.participantsCount));
+    const first = gameState.groupAssignments[0];
+    gameState.hybrid.activeParticipantNumber = Number(first?.participantNumber || 1);
+    gameState.activeGroupHabitat = first?.habitat || HYBRID_HABITATS[0];
+    ensureHybridState();
+    saveGameState();
+  }
+  const list = gameState.groupAssignments.map((assignment) => `<li>משתתף ${assignment.participantNumber} → <strong>${escapeHTML(assignment.habitat)}</strong></li>`).join('');
+  setScreen(`
+    <div class="card">
+      <div class="screen-eyebrow">מסך גילוי קבוצות</div>
+      <h2 class="screen-title">חלוקה ל־5 בתי גידול</h2>
+      <p class="screen-body">החלוקה דטרמיניסטית ומאוזנת לפי הסדר: בית, יער, ים, סוואנה, מדבר.</p>
+      <ul style="padding-right:18px">${list}</ul>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
+        <button class="btn btn-primary" onclick="goToScreen('step_5_nature_invention_match')">המשך לשלב התאמה היברידי</button>
+      </div>
+    </div>
+  `);
+}
+
+window.hybridSetActiveParticipant = function() {
+  const val = Number(document.getElementById('hybrid-participant-number')?.value || 1);
+  if (!Number.isInteger(val) || val < 1 || val > Number(gameState.participantsCount || 0)) {
+    showError('מספר משתתף לא תקין.');
+    return;
+  }
+  gameState.hybrid.activeParticipantNumber = val;
+  const assignment = getActiveParticipantAssignment();
+  gameState.activeGroupHabitat = assignment?.habitat || HYBRID_HABITATS[0];
+  saveGameState();
+  renderCurrentScreen();
+};
+
+window.hybridCheckCode = function() {
+  const selectedHabitat = String(document.getElementById('hybrid-world-select')?.value || '').trim();
+  const code = String(document.getElementById('hybrid-code-input')?.value || '').trim();
+  const groupHabitat = getActiveHabitat();
+  const groupProgress = gameState.hybrid.perGroupProgress[groupHabitat];
+  const pairs = getHybridPairsByHabitat(groupHabitat);
+  if (!selectedHabitat) { showError('בחרו עולם/בית גידול לפני בדיקה.'); return; }
+  if (!/^\d{4}$/.test(code)) { showError('הזינו קוד בן 4 ספרות.'); return; }
+  const pair = pairs.find((item) => item.fullCode === code);
+  if (selectedHabitat !== groupHabitat || !pair) {
+    showError('שגיאה: העולם/הקוד אינם תואמים לקבוצה.');
+    return;
+  }
+  if (groupProgress.solvedPairs.includes(pair.pairId)) {
+    showError('הצמד כבר נפתר קודם. לא ניתן לפתור פעמיים.');
+    return;
+  }
+  groupProgress.solvedPairs.push(pair.pairId);
+  groupProgress.solvedCount = groupProgress.solvedPairs.length;
+  groupProgress.score += 1;
+  if (groupProgress.solvedCount >= 7) groupProgress.secretRevealed = true;
+  saveGameState();
+  showDykPopup('הידעת? טקסט placeholder. ניתן להחליף בתוכן אמיתי.', `נכון! הושלם צמד ${groupProgress.solvedCount}/7`, () => renderCurrentScreen());
+};
+
+window.hybridConfirmCardAndContinue = function() {
+  const habitat = getActiveHabitat();
+  const groupProgress = gameState.hybrid.perGroupProgress[habitat];
+  if (!groupProgress.secretRevealed) {
+    showError('אי אפשר להמשיך לפני השלמת 7 צמדים.');
+    return;
+  }
+  groupProgress.cardConfirmed = true;
+  gameState.progress.step5Solved = true;
+  if (!gameState.codes.step5Digit1) gameState.codes.step5Digit1 = String(gameData.step5.secretDigits?.[0] || STEP_5_SECRET_DIGIT_1 || '4');
+  if (!gameState.codes.step5Digit2) gameState.codes.step5Digit2 = String(gameData.step5.secretDigits?.[1] || STEP_5_SECRET_DIGIT_2 || '2');
+  saveGameState();
+  goToScreen(getNextScreen('step_5_nature_invention_match'));
+};
+
 /* ---- Step 5: Matching ---- */
 function renderStep5() {
-  if (gameState.progress.step5Solved) {
-    hideIframe();
-    const d1 = String(gameState.codes.step5Digit1 ?? '').trim();
-    const d2 = String(gameState.codes.step5Digit2 ?? '').trim();
-    const codeLine = d1 && d2 ? `${d1} · ${d2}` : (d1 || d2 || '—');
-    const pts = Number(gameState.ui.step5VictoryPts);
-    const ptsLine = Number.isFinite(pts) ? pts : 0;
-    setScreen(`
-      <div class="card step5-victory-card" style="text-align:center;max-width:520px;margin:0 auto">
-        <div class="screen-eyebrow">${escapeHTML(UI_COPY.step4VictoryEyebrow)}</div>
-        <h2 class="screen-title">${escapeHTML(UI_COPY.step4VictoryTitle)}</h2>
-        <p class="screen-body">${escapeHTML(UI_COPY.step4VictoryText)}</p>
-        <div class="step5-victory-copy">
-          ${escapeHTML(UI_COPY.step4VictoryText)}<br/><br/>
-          ${escapeHTML((UI_COPY.step4ScoreLineTemplate || "קיבלתם: {totalScore} נקודות").replace("{totalScore}", String(ptsLine)))}<br/>
-          ${escapeHTML((UI_COPY.step4VictoryCodeLabel || '').replace('{digit1}', d1 || '—').replace('{digit2}', d2 || '—'))}
-        </div>
-        <div class="step5-victory-score">ניקוד מהשלב: <strong>${escapeHTML((UI_COPY.step4ScoreLineTemplate || "קיבלתם: {totalScore} נקודות").replace("{totalScore}", String(ptsLine)))}</strong></div>
-        <div class="screen-body" style="margin-bottom:4px;font-weight:700;color:var(--accent)">${escapeHTML((UI_COPY.step4VictoryCodeLabel || '').replace('{digit1}', d1 || '—').replace('{digit2}', d2 || '—'))}</div>
-        <div class="step5-victory-code" dir="ltr">${escapeHTML(codeLine)}</div>
-        <div class="btn-row" style="justify-content:center;margin-top:16px">
-          <button type="button" class="btn btn-primary" onclick="window.step5VictoryContinue()">${escapeHTML(UI_COPY.step4ContinueBtnLabel)}</button>
-        </div>
+  ensureHybridState();
+  const habitat = getActiveHabitat();
+  const progress = gameState.hybrid.perGroupProgress[habitat];
+  const totalParticipants = Number(gameState.participantsCount || 0);
+  const options = Array.from({ length: totalParticipants }, (_, i) => `<option value="${i + 1}" ${Number(gameState.hybrid.activeParticipantNumber) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('');
+  const message = progress.secretRevealed
+    ? `<div class="hint-box" style="display:block;margin-top:8px">המשפט הסודי: <strong>${escapeHTML(progress.secretSentence)}</strong><br/>עכשיו פנו לקבוצת ${escapeHTML(progress.cardHeldByGroup)} לקבלת הקלף החסר.</div>`
+    : '';
+  setScreen(`
+    <div class="card">
+      <div class="screen-eyebrow">שלב 4 – שלב התאמה היברידי</div>
+      <h2 class="screen-title">קבוצה: ${escapeHTML(habitat)}</h2>
+      <p class="screen-body">בחרו עולם, הזינו קוד 4 ספרות ולחצו בדיקה. חובה להשלים 7/7 לפני מעבר.</p>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:360px;margin:0 auto">
+        <label>מספר משתתף
+          <select id="hybrid-participant-number" onchange="window.hybridSetActiveParticipant()">${options}</select>
+        </label>
+        <label>עולם / בית גידול
+          <select id="hybrid-world-select">
+            <option value="">בחרו עולם</option>
+            ${HYBRID_HABITATS.map((h) => `<option value="${escapeHTML(h)}">${escapeHTML(h)}</option>`).join('')}
+          </select>
+        </label>
+        <label>קוד 4 ספרות
+          <input id="hybrid-code-input" type="text" inputmode="numeric" maxlength="4" placeholder="0000" />
+        </label>
+        <button class="btn btn-primary" onclick="window.hybridCheckCode()">בדיקה</button>
       </div>
-    `);
-    return;
-  }
-  if (!gameState.ui.step5IntroShown) {
-    setUiBusy(false);
-    setScreen(`
-      <div class="card step5-instructions-card">
-        <div class="screen-eyebrow">${escapeHTML(UI_COPY.step4IntroEyebrow)}</div>
-        <h2 class="screen-title">${escapeHTML(UI_COPY.step4IntroTitle)}</h2>
-        <div class="step5-instructions-body">
-          <p>${escapeHTML(UI_COPY.step4IntroText1)}</p>
-          <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-            <div style="flex:1;min-width:120px;background:rgba(0,232,180,.08);border:1px solid rgba(0,232,180,.2);border-radius:10px;padding:10px 12px">
-              <strong style="display:block;margin-bottom:4px;color:var(--accent)">${escapeHTML(UI_COPY.step4Card1Title)}</strong>
-              <span style="font-size:.9rem">${escapeHTML(UI_COPY.step4Card1Text)}</span>
-            </div>
-            <div style="flex:1;min-width:120px;background:rgba(0,232,180,.08);border:1px solid rgba(0,232,180,.2);border-radius:10px;padding:10px 12px">
-              <strong style="display:block;margin-bottom:4px;color:var(--accent)">${escapeHTML(UI_COPY.step4Card2Title)}</strong>
-              <span style="font-size:.9rem">${escapeHTML(UI_COPY.step4Card2Text)}</span>
-            </div>
-          </div>
-        </div>
-        <div class="btn-row" style="justify-content:flex-end;margin-top:8px">
-          <button type="button" class="btn btn-primary" onclick="window.confirmStep5Intro()">${escapeHTML(UI_COPY.step4IntroBtnLabel)}</button>
-        </div>
+      <p class="screen-body" style="margin-top:8px">מונה: <strong>${progress.solvedCount}</strong> מתוך 7 הושלמו</p>
+      ${message}
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
+        <button class="btn btn-primary" ${progress.secretRevealed ? '' : 'disabled'} onclick="window.hybridConfirmCardAndContinue()">קיבלנו את הקלף – המשך</button>
       </div>
-    `);
-    return;
-  }
-  /* הצג פעילות ההתאמה המלאה כ-iframe */
-  persistStep5Context();
-  showIframe(`game/biomatch.html?ctx=${encodeURIComponent(STEP5_CTX_KEY)}&d=${Number(gameState.selectedDoor?.num || 0)}`);
+    </div>
+  `);
 }
 
 window.step5SelectCard = function(pairId, side) {
@@ -8749,6 +9048,9 @@ function renderFallbackError() {
 window.restartGame = function() {
   clearSavedState();
   gameState.currentScreen = "name_entry";
+  gameState.participantsCount = 0;
+  gameState.groupAssignments = [];
+  gameState.activeGroupHabitat = null;
   gameState.firstDoorOrganism = '';
   gameState.player.name   = '';
   gameState.player.participantId = '';
@@ -8784,6 +9086,9 @@ window.restartGame = function() {
   gameState._step6.requiredToFind = getStep6RequiredToFind();
   gameState._step6.successShown = false;
   gameState._step6.zoom90 = false;
+  gameState.hybrid.activeParticipantNumber = 1;
+  gameState.hybrid.cardTransfers = { ...HYBRID_CARD_HOLDER_MAP };
+  gameState.hybrid.perGroupProgress = buildHybridDefaultProgress();
   clearStatus();
   goToScreen("name_entry");
 };
@@ -8808,6 +9113,7 @@ document.addEventListener("DOMContentLoaded", async function() {
   if (!loaded) {
     gameState.currentScreen = "name_entry";
   }
+  ensureHybridState();
   let _skipToCountdown = false;
   try {
     const pending = sessionStorage.getItem('bioplay_pending_name');
