@@ -4186,6 +4186,16 @@ function parseGroupSizes(raw) {
   return null;
 }
 
+function computeBalancedGroupSizes(totalParticipants) {
+  const total = Math.max(0, Number(totalParticipants) || 0);
+  const base = Math.floor(total / HYBRID_HABITATS.length);
+  const remainder = total % HYBRID_HABITATS.length;
+  return HYBRID_HABITATS.reduce((acc, habitat, i) => {
+    acc[habitat] = base + (i < remainder ? 1 : 0);
+    return acc;
+  }, {});
+}
+
 function parseGroupAssignments(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
@@ -6994,40 +7004,11 @@ function renderGameSetupGuide() {
 }
 
 function renderInstructorDashboard() {
-  ensureHybridState();
-  const assignmentsHtml = (gameState.groupAssignments || []).length
-    ? gameState.groupAssignments.map((assignment, idx) => {
-      const label = assignment?.participantId
-        ? `מזהה ${escapeHTML(String(assignment.participantId))}`
-        : `משתתף ${escapeHTML(String(assignment?.participantNumber || idx + 1))}`;
-      return `<li>${label}: <strong>${escapeHTML(assignment.habitat || '')}</strong></li>`;
-    }).join('')
-    : '<li>אין חלוקה עדיין (תבוצע לאחר דלת 1).</li>';
-  const groupsHtml = HYBRID_HABITATS.map((habitat) => {
-    const p = gameState.hybrid.perGroupProgress[habitat];
-    const pairs = getHybridPairsByHabitat(habitat);
-    return `<div style="margin-top:12px;padding:10px;border:1px solid rgba(0,232,180,.2);border-radius:10px">
-      <div><strong>${escapeHTML(habitat)}</strong> | הושלמו: ${Number(p.solvedCount || 0)}/7</div>
-      <div>משפט סודי: ${escapeHTML(p.secretSentence)}</div>
-      <div>קלף מאומת ע"י קבוצה: ${escapeHTML(p.cardHeldByGroup || HYBRID_CARD_HOLDER_MAP[habitat])}</div>
-      <div>חשיפת משפט: ${p.secretRevealed ? 'כן' : 'לא'} | אישור קלף: ${p.cardConfirmed ? 'כן' : 'לא'}</div>
-      <ul style="margin-top:6px;padding-right:18px">
-        ${pairs.map((pair) => `<li>#${pair.pairId} → ${escapeHTML(pair.fullCode)}</li>`).join('')}
-      </ul>
-    </div>`;
-  }).join('');
   setScreen(`
     <div class="card">
-      <div class="screen-eyebrow">מסך מדריך</div>
-      <h2 class="screen-title">דשבורד מצב מלא</h2>
-      <p class="screen-body">מספר משתתפים: <strong>${Number(gameState.participantsCount || 0)}</strong></p>
-      <h3 style="margin-top:10px">חלוקה לקבוצות</h3>
-      <ul style="padding-right:18px">${assignmentsHtml}</ul>
-      ${groupsHtml}
-      <div class="btn-row" style="margin-top:14px">
-        <button class="btn btn-secondary" onclick="goToScreen('game_setup_guide')">חזרה להגדרה</button>
-        <button class="btn btn-primary" onclick="goToScreen('${escapeHTML(gameState.progress.door1Unlocked ? 'hybrid_group_discovery' : 'step_1_identification')}')">חזרה למשחק</button>
-      </div>
+      <h2 class="screen-title">גישה חסומה במסך שחקנים</h2>
+      <p class="screen-body">מידע מדריך מוצג בלוח האדמין בלבד.</p>
+      <button class="btn btn-primary" onclick="goToScreen('${escapeHTML(gameState.progress.door1Unlocked ? 'hybrid_group_discovery' : 'step_1_identification')}')">חזרה למשחק</button>
     </div>
   `);
 }
