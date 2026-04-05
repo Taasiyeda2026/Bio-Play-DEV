@@ -4172,6 +4172,34 @@ function getHybridPairsByHabitat(habitat) {
   return HYBRID_PAIRS.filter((pair) => pair.habitat === habitat);
 }
 
+function parseGroupSizes(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function parseGroupAssignments(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
 /* ============================================================
    DYNAMIC STEP ROUTING
    ============================================================ */
@@ -4198,14 +4226,6 @@ function getNextScreen(current) {
 }
 
 function normalizeScreenRoute(screenName) {
-  if (
-    screenName !== 'name_entry' &&
-    screenName !== 'game_setup_guide' &&
-    screenName !== 'instructor_dashboard' &&
-    (!Number.isInteger(Number(gameState.participantsCount)) || Number(gameState.participantsCount) <= 0)
-  ) {
-    return 'game_setup_guide';
-  }
   if (screenName === 'door_1_dyk') {
     if (!gameState.progress.door1Unlocked) return 'door_1';
     if (gameState.progress.door1DykViewed) return getNextScreen('door_1_dyk');
@@ -5147,6 +5167,7 @@ rebuildDykByOrganism();
 const gameState = {
   currentScreen: "name_entry",
   participantsCount: 0,
+  groupSizes: {},
   groupAssignments: [],
   activeGroupHabitat: null,
 
@@ -5316,6 +5337,7 @@ function saveGameState() {
     selectedDoorIds: gameState.selectedDoorIds,
     enabledSteps:    gameState.enabledSteps,
     participantsCount: Number(gameState.participantsCount || 0),
+    groupSizes: { ...(gameState.groupSizes || {}) },
     groupAssignments: Array.isArray(gameState.groupAssignments) ? [...gameState.groupAssignments] : [],
     activeGroupHabitat: gameState.activeGroupHabitat || null,
     player:          { ...gameState.player },
@@ -5372,6 +5394,7 @@ function loadGameState() {
     if (Array.isArray(parsed.enabledSteps)    && parsed.enabledSteps.length > 0)
                                                                 gameState.enabledSteps    = parsed.enabledSteps;
     gameState.participantsCount = Number(parsed.participantsCount || 0);
+    gameState.groupSizes = (parsed.groupSizes && typeof parsed.groupSizes === 'object') ? parsed.groupSizes : {};
     gameState.groupAssignments = Array.isArray(parsed.groupAssignments) ? parsed.groupAssignments : [];
     gameState.activeGroupHabitat = parsed.activeGroupHabitat || null;
     if (parsed.player)    Object.assign(gameState.player,    parsed.player);
@@ -5414,6 +5437,21 @@ function loadGameState() {
 
 function clearSavedState() {
   sessionStorage.removeItem(bioroomSessionStateKey());
+}
+
+function applyAdminGroupConfig(statusPayload = {}) {
+  const parsedCount = Number(statusPayload?.participantsCount);
+  if (Number.isInteger(parsedCount) && parsedCount > 0) {
+    gameState.participantsCount = parsedCount;
+  }
+  const parsedSizes = parseGroupSizes(statusPayload?.groupSizes);
+  if (parsedSizes && Object.keys(parsedSizes).length) {
+    gameState.groupSizes = parsedSizes;
+  }
+  const parsedAssignments = parseGroupAssignments(statusPayload?.groupAssignments);
+  if (parsedAssignments.length) {
+    gameState.groupAssignments = parsedAssignments;
+  }
 }
 
 /* ============================================================
@@ -6390,6 +6428,9 @@ async function apiGet(action, extra = {}) {
       doorsCount: st?.doorsCount || 5,
       selectedDoors: Array.isArray(st?.selectedDoors) ? st.selectedDoors : [],
       enabledSteps: Array.isArray(st?.enabledSteps) ? st.enabledSteps : [1, 2, 3, 4, 5, 6],
+      participantsCount: Number(st?.participantsCount || 0) || 0,
+      groupSizes: st?.groupSizes && typeof st.groupSizes === 'object' ? st.groupSizes : {},
+      groupAssignments: Array.isArray(st?.groupAssignments) ? st.groupAssignments : [],
       startedAtMs: Number(st?.startedAt || 0) || 0,
     };
   }
@@ -6474,31 +6515,36 @@ function attemptsErrorMsg(stepKey) {
   return "לא נכון 😔 — נסו שוב. לא ייזקף ניקוד על שאלה זו.";
 }
 
-function buildBalancedAssignments(participantsCount) {
-  const total = Math.max(0, Number(participantsCount) || 0);
-  if (!total) return [];
-  const base = Math.floor(total / HYBRID_HABITATS.length);
-  const remainder = total % HYBRID_HABITATS.length;
-  const assignments = [];
-  let participantNumber = 1;
-  HYBRID_HABITATS.forEach((habitat, index) => {
-    const size = base + (index < remainder ? 1 : 0);
-    for (let i = 0; i < size; i++) {
-      assignments.push({ participantNumber, habitat });
-      participantNumber += 1;
-    }
-  });
-  return assignments;
-}
-
 function getActiveParticipantAssignment() {
-  const participantNumber = Number(gameState.hybrid?.activeParticipantNumber || 1);
-  return gameState.groupAssignments.find((assignment) => Number(assignment.participantNumber) === participantNumber) || null;
+  const participantId = ensureParticipantId();
+  const assignments = Array.isArray(gameState.groupAssignments) ? gameState.groupAssignments : [];
+  const byParticipantId = assignments.find((assignment) => String(assignment?.participantId || '').trim() === participantId);
+  if (byParticipantId) return byParticipantId;
+  const byName = assignments.find((assignment) => {
+    const expected = String(assignment?.playerName || assignment?.name || '').trim();
+    return expected && expected === String(gameState.player.name || '').trim();
+  });
+  return byName || null;
 }
 
 function getActiveHabitat() {
   const assignment = getActiveParticipantAssignment();
-  return assignment?.habitat || gameState.activeGroupHabitat || HYBRID_HABITATS[0];
+  if (assignment?.habitat) return assignment.habitat;
+  const participantId = ensureParticipantId();
+  const total = Number(gameState.participantsCount || 0);
+  if (total < 1) return gameState.activeGroupHabitat || HYBRID_HABITATS[0];
+  let hash = 0;
+  const seed = `${participantId}_${ROOM_ID}`;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) & 0x7fffffff;
+  }
+  const slot = (hash % total) + 1;
+  let cursor = 0;
+  for (const habitat of HYBRID_HABITATS) {
+    cursor += Number(gameState.groupSizes?.[habitat] || 0);
+    if (slot <= cursor) return habitat;
+  }
+  return gameState.activeGroupHabitat || HYBRID_HABITATS[0];
 }
 
 /* ============================================================
@@ -6605,6 +6651,7 @@ async function _pollNameEntryStatus() {
   });
   if (isGameActiveStatus(data?.status)) {
     clearInterval(_namePoll);
+    applyAdminGroupConfig(data);
     if (Array.isArray(data.selectedDoors) && data.selectedDoors.length > 0)
       gameState.selectedDoorIds = data.selectedDoors;
     if (Array.isArray(data.enabledSteps) && data.enabledSteps.length > 0)
@@ -6617,6 +6664,7 @@ async function _pollNameEntryStatus() {
       roomId: ROOM_ID,
     });
     if (gameState.player.name) {
+      saveGameState();
       startCountdownWithNarration();
       return;
     }
@@ -6934,38 +6982,27 @@ window.submitPlayerName = async function() {
 function renderGameSetupGuide() {
   setScreen(`
     <div class="card">
-      <div class="screen-eyebrow">מדריך / הגדרת משחק</div>
+      <div class="screen-eyebrow">הכנה למשחק</div>
       <h2 class="screen-title">לפני תחילת המסע</h2>
-      <p class="screen-body">הזינו מספר משתתפים (מספר שלם גדול מ־0). החלוקה לקבוצות תתבצע רק לאחר פתיחת דלת 1.</p>
+      <p class="screen-body">מספר משתתפים וחלוקה לקבוצות מוגדרים בלוח האדמין בלבד.</p>
       <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;margin:0 auto">
-        <input id="participants-count-input" type="number" min="1" step="1" value="${Number(gameState.participantsCount || '') || ''}" class="vault-digit" style="width:100%;max-width:none;height:56px;font-size:1.2rem" />
-        <button class="btn btn-primary" onclick="window.saveParticipantsAndStart()">שמור והמשך למסע</button>
+        <p class="screen-body" style="margin:0;font-size:.95rem">אם ההגדרות עדיין לא מוכנות, פנו למדריך.</p>
+        <button class="btn btn-primary" onclick="goToScreen(gameState.selectedDoor ? 'step_1_identification' : 'door_selection')">המשך למסע</button>
         <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
       </div>
     </div>
   `);
 }
 
-window.saveParticipantsAndStart = function() {
-  const inputEl = document.getElementById('participants-count-input');
-  const raw = Number(inputEl?.value);
-  if (!Number.isInteger(raw) || raw <= 0) {
-    showError('יש להזין מספר משתתפים תקין (שלם גדול מ־0).');
-    return;
-  }
-  gameState.participantsCount = raw;
-  saveGameState();
-  if (gameState.selectedDoor) {
-    goToScreen('step_1_identification');
-    return;
-  }
-  goToScreen('door_selection');
-};
-
 function renderInstructorDashboard() {
   ensureHybridState();
   const assignmentsHtml = (gameState.groupAssignments || []).length
-    ? gameState.groupAssignments.map((assignment) => `<li>משתתף ${assignment.participantNumber}: <strong>${escapeHTML(assignment.habitat)}</strong></li>`).join('')
+    ? gameState.groupAssignments.map((assignment, idx) => {
+      const label = assignment?.participantId
+        ? `מזהה ${escapeHTML(String(assignment.participantId))}`
+        : `משתתף ${escapeHTML(String(assignment?.participantNumber || idx + 1))}`;
+      return `<li>${label}: <strong>${escapeHTML(assignment.habitat || '')}</strong></li>`;
+    }).join('')
     : '<li>אין חלוקה עדיין (תבוצע לאחר דלת 1).</li>';
   const groupsHtml = HYBRID_HABITATS.map((habitat) => {
     const p = gameState.hybrid.perGroupProgress[habitat];
@@ -7521,26 +7558,39 @@ function renderHybridGroupDiscovery() {
     goToScreen('door_1');
     return;
   }
-  if (!Number.isInteger(Number(gameState.participantsCount)) || Number(gameState.participantsCount) <= 0) {
-    showError('חסר מספר משתתפים. חזרו למסך ההגדרה.');
-    goToScreen('game_setup_guide');
+  const hasParticipants = Number.isInteger(Number(gameState.participantsCount)) && Number(gameState.participantsCount) > 0;
+  const hasGroupSizes = gameState.groupSizes && HYBRID_HABITATS.some((habitat) => Number(gameState.groupSizes[habitat] || 0) > 0);
+  if (!hasParticipants || !hasGroupSizes) {
+    apiGet('gamestatus')
+      .then((statusPayload) => {
+        applyAdminGroupConfig(statusPayload || {});
+        const refreshedHasParticipants = Number.isInteger(Number(gameState.participantsCount)) && Number(gameState.participantsCount) > 0;
+        const refreshedHasGroupSizes = gameState.groupSizes && HYBRID_HABITATS.some((habitat) => Number(gameState.groupSizes[habitat] || 0) > 0);
+        if (refreshedHasParticipants && refreshedHasGroupSizes && gameState.currentScreen === 'hybrid_group_discovery') {
+          saveGameState();
+          renderCurrentScreen();
+        }
+      })
+      .catch(() => {});
+    setScreen(`
+      <div class="card">
+        <div class="screen-eyebrow">מסך גילוי קבוצות</div>
+        <h2 class="screen-title">לא ניתן להמשיך עדיין</h2>
+        <p class="screen-body">ההגדרות עדיין לא הוזנו בלוח האדמין. פנו למדריך.</p>
+      </div>
+    `);
     return;
   }
-  if (!Array.isArray(gameState.groupAssignments) || gameState.groupAssignments.length !== Number(gameState.participantsCount)) {
-    gameState.groupAssignments = buildBalancedAssignments(Number(gameState.participantsCount));
-    const first = gameState.groupAssignments[0];
-    gameState.hybrid.activeParticipantNumber = Number(first?.participantNumber || 1);
-    gameState.activeGroupHabitat = first?.habitat || HYBRID_HABITATS[0];
-    ensureHybridState();
-    saveGameState();
-  }
-  const list = gameState.groupAssignments.map((assignment) => `<li>משתתף ${assignment.participantNumber} → <strong>${escapeHTML(assignment.habitat)}</strong></li>`).join('');
+  const habitat = getActiveHabitat();
+  gameState.activeGroupHabitat = habitat;
+  saveGameState();
+  const sizesSummary = HYBRID_HABITATS.map((h) => `<li>${escapeHTML(h)}: <strong>${Number(gameState.groupSizes?.[h] || 0)}</strong></li>`).join('');
   setScreen(`
     <div class="card">
       <div class="screen-eyebrow">מסך גילוי קבוצות</div>
-      <h2 class="screen-title">חלוקה ל־5 בתי גידול</h2>
-      <p class="screen-body">החלוקה דטרמיניסטית ומאוזנת לפי הסדר: בית, יער, ים, סוואנה, מדבר.</p>
-      <ul style="padding-right:18px">${list}</ul>
+      <h2 class="screen-title">אתם בקבוצת: ${escapeHTML(habitat)}</h2>
+      <p class="screen-body">החלוקה נקבעה מראש על ידי המדריך בלוח האדמין.</p>
+      <ul style="padding-right:18px">${sizesSummary}</ul>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="goToScreen('instructor_dashboard')">דשבורד מדריך</button>
         <button class="btn btn-primary" onclick="goToScreen('step_5_nature_invention_match')">המשך לשלב התאמה היברידי</button>
@@ -7548,19 +7598,6 @@ function renderHybridGroupDiscovery() {
     </div>
   `);
 }
-
-window.hybridSetActiveParticipant = function() {
-  const val = Number(document.getElementById('hybrid-participant-number')?.value || 1);
-  if (!Number.isInteger(val) || val < 1 || val > Number(gameState.participantsCount || 0)) {
-    showError('מספר משתתף לא תקין.');
-    return;
-  }
-  gameState.hybrid.activeParticipantNumber = val;
-  const assignment = getActiveParticipantAssignment();
-  gameState.activeGroupHabitat = assignment?.habitat || HYBRID_HABITATS[0];
-  saveGameState();
-  renderCurrentScreen();
-};
 
 window.hybridCheckCode = function() {
   const selectedHabitat = String(document.getElementById('hybrid-world-select')?.value || '').trim();
@@ -7607,8 +7644,6 @@ function renderStep5() {
   ensureHybridState();
   const habitat = getActiveHabitat();
   const progress = gameState.hybrid.perGroupProgress[habitat];
-  const totalParticipants = Number(gameState.participantsCount || 0);
-  const options = Array.from({ length: totalParticipants }, (_, i) => `<option value="${i + 1}" ${Number(gameState.hybrid.activeParticipantNumber) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('');
   const message = progress.secretRevealed
     ? `<div class="hint-box" style="display:block;margin-top:8px">המשפט הסודי: <strong>${escapeHTML(progress.secretSentence)}</strong><br/>עכשיו פנו לקבוצת ${escapeHTML(progress.cardHeldByGroup)} לקבלת הקלף החסר.</div>`
     : '';
@@ -7618,9 +7653,6 @@ function renderStep5() {
       <h2 class="screen-title">קבוצה: ${escapeHTML(habitat)}</h2>
       <p class="screen-body">בחרו עולם, הזינו קוד 4 ספרות ולחצו בדיקה. חובה להשלים 7/7 לפני מעבר.</p>
       <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:360px;margin:0 auto">
-        <label>מספר משתתף
-          <select id="hybrid-participant-number" onchange="window.hybridSetActiveParticipant()">${options}</select>
-        </label>
         <label>עולם / בית גידול
           <select id="hybrid-world-select">
             <option value="">בחרו עולם</option>
@@ -9049,6 +9081,7 @@ window.restartGame = function() {
   clearSavedState();
   gameState.currentScreen = "name_entry";
   gameState.participantsCount = 0;
+  gameState.groupSizes = {};
   gameState.groupAssignments = [];
   gameState.activeGroupHabitat = null;
   gameState.firstDoorOrganism = '';
@@ -9121,6 +9154,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     if (gameState.player.name && gameState.currentScreen === 'name_entry') {
       const st = await apiGet('gamestatus');
       if (isGameActiveStatus(st?.status)) {
+        applyAdminGroupConfig(st);
         gameState.selectedDoorIds = Array.isArray(st.selectedDoors) && st.selectedDoors.length ? st.selectedDoors : gameState.selectedDoorIds;
         gameState.enabledSteps = Array.isArray(st.enabledSteps) && st.enabledSteps.length ? st.enabledSteps : gameState.enabledSteps;
         gameState.doorsCount = Number(st.doorsCount || gameState.doorsCount || 0);
